@@ -1,0 +1,15 @@
+node_modules/
+dist/
+upstream/
+test-results/
+playwright-report/
+*.log
+tsconfig.tsbuildinfo
+/public/engines/
+/public/ocr/core/
+/public/ocr/lang/
+/public/ocr/worker.min.js*
+/public/fonts/NotoSansCJKsc-Regular.otf
+/public/fonts/OFL.txt
+/public/licenses/
+/public/asset-provenance.json

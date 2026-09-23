@@ -1,0 +1,40 @@
+# FileFit
+
+A browser-local image and PDF workspace that checks upload requirements against actual output bytes, format, dimensions and page count. Originals are preserved. Failed requirements are not reported as successful.
+
+The first release includes batch image fitting and JPEG/PNG/WebP/AVIF conversion, HEIC input, resizing and DPI, image stitching, image-to-PDF, content-preserving and explicitly rasterized PDF compression, PDF page tools, text/image extraction, Chinese/English OCR, encryption, presets, and JSON plus readable HTML reports. See the [verification ledger](docs/verification.md) for exercised paths and limits.
+
+[中文](README.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Verification](docs/verification.md)
+
+Use Node.js 22+:
+
+```sh
+npm ci
+node scripts/prepare-assets.mjs
+npm run dev
+```
+
+Open the localhost URL shown by Vite. Windows users may run `scripts/start-windows.cmd`. Initial installation needs internet access for dependencies, pinned OCR language models and fonts. Runtime engines are served from the same origin; document content is processed locally.
+
+Large WASM engines, OCR models and fonts are generated build assets and are not committed to Git. Run `node scripts/prepare-assets.mjs` in every fresh checkout before starting or building.
+
+```sh
+npm test
+npm run build
+npm run preview
+```
+
+Serve the complete `dist/` directory at your site's root. Workers, WebAssembly and service workers require an HTTP localhost or HTTPS server, not a file URL.
+
+```sh
+docker build -t filefit .
+docker run --rm -p 8080:8080 filefit
+```
+
+The container serves static files at port 8080. Configure HTTPS separately for public hosting. Docker has not yet been verified in this delivery environment.
+
+FileFit uses decimal KB/MB. Rasterized PDF compression loses selectable text, links and forms; choose that mode explicitly. OCR needs human review. PDF edits affect signatures. Arbitrary size, quality and pixel constraints cannot always be satisfied. Modern desktop Chromium is the primary test target; consult the verification record for actual coverage rather than treating the design specification as a completion claim.
+
+Files and passwords are not stored in the static-resource cache. Preferences may persist locally; files must be added again after refresh. PWA caching is opportunistic and bounded: a feature must first download its resources, and the browser may evict them. Full first-use offline support is not promised. Clear caches through the app or browser site-data settings.
+
+Licensed under AGPL-3.0-only. Before public deployment, provide a visible link to the complete Corresponding Source for the exact deployed version. Review the bundled dependency notices and source obligations. No GitHub repository is created or published by these local setup steps.
