@@ -15,6 +15,7 @@ export function validateOptions(o:FitOptions):string[]{
  for(const key of ['width','height','dpi','maxPages'] as const)if(!Number.isInteger(o[key])||o[key]<0)errors.push(`${key} 必须为非负整数`);
  if(o.width>20000||o.height>20000||o.width*o.height>40000000)errors.push('图片尺寸超过 4000 万像素或 20000 像素边长');
  if(!Number.isFinite(o.minQuality)||o.minQuality<0.1||o.minQuality>1)errors.push('清晰度下限应在 10% 到 100% 之间');
+ if(o.paper==='custom'&&(!Number.isFinite(o.paperWidthMm)||!Number.isFinite(o.paperHeightMm)||o.paperWidthMm<10||o.paperHeightMm<10||o.paperWidthMm>1200||o.paperHeightMm>1200))errors.push('自定义纸张宽高应为 10–1200 毫米');
  return errors;
 }
 export function outputName(name:string,format:string,template=''):string{

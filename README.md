@@ -2,7 +2,7 @@
 
 浏览器本地处理图片和 PDF，按实际输出大小、格式、尺寸和页数检查上传要求。原文件不覆盖，未达标结果明确标记。中文优先，支持英文界面。
 
-首版包括批量图片压缩与 JPEG/PNG/WebP/AVIF 转换、HEIC 输入、尺寸与 DPI 调整、长图拼接、图片转 PDF、PDF 保留文字压缩与可选图片化压缩、合并/拆分/页面整理、PDF 转图片与文字、中文和英文 OCR、加密解密、预设、逐项验收及 JSON/可读 HTML 报告。实际验证范围和限制见[验收记录](docs/verification.md)。
+首版包括批量图片压缩与 JPEG/PNG/WebP/AVIF 转换、可选 PNG 调色板压缩、HEIC 输入、尺寸/DPI/毫米换算、长图拼接、图片转 PDF、PDF 保留文字压缩与可选图片化压缩、合并/拆分/页面整理与自定义纸张、PDF 转图片与文字、中文和英文 OCR、加密解密、预设、逐项验收及 JSON/可读 HTML 报告。实际验证范围和限制见[验收记录](docs/verification.md)。
 
 [English](README.en.md) · [第三方声明](THIRD_PARTY_NOTICES.md) · [验收记录](docs/verification.md)
 

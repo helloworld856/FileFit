@@ -1,5 +1,6 @@
 import type { FileInfo,FitOptions,Progress,ProcessResult } from '../core/types';
 import {imageGeometry,isAnimated,readDpi,sniffImage,writeDpi} from './image-helpers';
+import {encodePalettePng} from './png-palette';
 
 function cancelled(signal?:AbortSignal){if(signal?.aborted)throw new DOMException('任务已取消','AbortError');}
 function canvas(w:number,h:number){imageGeometry(w,h,0,0,'contain');const c=document.createElement('canvas');c.width=w;c.height=h;return c;}
@@ -41,21 +42,27 @@ function outputName(name:string,options:FitOptions,format:string){const base=(op
 async function finish(source:HTMLCanvasElement,name:string,format:string,options:FitOptions,progress:Progress,signal:AbortSignal,warnings:string[]):Promise<ProcessResult>{
  if(!['jpeg','png','webp','avif'].includes(format))throw new Error('请选择图片输出格式');
  if(options.dpi&&!['jpeg','png'].includes(format))throw new Error('DPI 写入仅支持 JPEG 和 PNG');
- const floor=Math.max(0.01,Math.min(1,options.minQuality));let best:Blob|undefined,bestW=source.width,bestH=source.height,work=source;
+ const floor=Math.max(0.01,Math.min(1,options.minQuality));let best:Blob|undefined,bestW=source.width,bestH=source.height,work=source,bestPalette=false;
  const qualities=format==='png'?[1]:Array.from({length:9},(_,i)=>1-(1-floor)*i/8);
  try{
   for(let scale=0;scale<9;scale++){
    for(let i=0;i<qualities.length;i++){
     cancelled(signal);progress(Math.min(94,15+scale*8+i),'正在按实际体积搜索图片质量');
-    const candidate=await encode(work,format,qualities[i],options.dpi,signal);cancelled(signal);
-    if(!best||candidate.size<best.size){best=candidate;bestW=work.width;bestH=work.height;}
-    if(!options.maxBytes||candidate.size<=options.maxBytes){best=candidate;bestW=work.width;bestH=work.height;break;}
+    let candidate=await encode(work,format,qualities[i],options.dpi,signal),paletteUsed=false;cancelled(signal);
+    if(format==='png'&&options.pngPalette&&work.width*work.height<=16_000_000){
+     let palette=await encodePalettePng(work);if(options.dpi)palette=new Blob([writeDpi(new Uint8Array(await palette.arrayBuffer()),'png',options.dpi) as Uint8Array<ArrayBuffer>],{type:'image/png'});
+     if(palette.size<candidate.size){candidate=palette;paletteUsed=true;}
+    }
+    if(!best||candidate.size<best.size){best=candidate;bestW=work.width;bestH=work.height;bestPalette=paletteUsed;}
+    if(!options.maxBytes||candidate.size<=options.maxBytes){best=candidate;bestW=work.width;bestH=work.height;bestPalette=paletteUsed;break;}
    }
    if(best&&(!options.maxBytes||best.size<=options.maxBytes))break;
    if(!options.allowResize||options.width>0||options.height>0||work.width<32||work.height<32)break;
    const smaller=canvas(Math.max(1,Math.floor(work.width*.8)),Math.max(1,Math.floor(work.height*.8)));smaller.getContext('2d')!.drawImage(source,0,0,smaller.width,smaller.height);if(work!==source){work.width=1;work.height=1;}work=smaller;
   }
   if(!best)throw new Error('没有生成图片');
+  if(bestPalette)warnings.push('已使用调色板 PNG：颜色归并为 216 色，半透明像素转为透明或不透明。请预览确认外观。');
+  else if(format==='png'&&options.pngPalette&&source.width*source.height>16_000_000)warnings.push('图片超过调色板压缩的 1600 万像素上限，已使用普通 PNG 编码。');
   if(options.maxBytes&&best.size>options.maxBytes)warnings.push('在指定像素尺寸和质量下限内无法达到目标体积；保留最小候选供检查。');
   if(bestW!==source.width||bestH!==source.height)warnings.push('已按允许缩小设置降低像素尺寸。');
   const info:FileInfo={format,width:bestW,height:bestH,dpi:readDpi(new Uint8Array(await best.arrayBuffer()))};

@@ -7,6 +7,7 @@ const abort = (signal?:AbortSignal)=>{if(signal?.aborted) throw new DOMException
 const pdfBlob = (bytes:Uint8Array)=>new Blob([new Uint8Array(bytes)],{type:'application/pdf'});
 const stem = (name:string)=>name.replace(/\.[^.]+$/,'');
 const nameFor = (file:File,o:FitOptions,suffix='')=>`${stem(o.filename||file.name)}${suffix}.pdf`;
+const paperSize=(o:FitOptions):[number,number]|null=>o.paper==='a4'?[595.276,841.89]:o.paper==='letter'?[612,792]:o.paper==='custom'?[o.paperWidthMm*72/25.4,o.paperHeightMm*72/25.4]:null;
 
 async function openJs(file:Blob,password='',signal?:AbortSignal) {
   const pdfjs = await import('pdfjs-dist');
@@ -46,7 +47,7 @@ async function edited(file:Blob,o:FitOptions,signal:AbortSignal):Promise<Blob>{
   for(const [i,p] of doc.getPages().entries()) {
     abort(signal);
     if(o.rotate)p.setRotation(degrees((p.getRotation().angle+o.rotate)%360));
-    const paper=o.paper==='a4'?[595.276,841.89]:o.paper==='letter'?[612,792]:o.width&&o.height?[o.width,o.height]:null;
+    const paper=paperSize(o);
     if(paper){const [w,h]=paper;const scale=Math.min(w/p.getWidth(),h/p.getHeight());p.scaleContent(scale,scale);p.scaleAnnotations(scale,scale);p.setSize(w,h);}
     if(o.watermark){const size=Math.min(36,p.getWidth()/Math.max(4,o.watermark.length));p.drawText(o.watermark,{font,size,x:24,y:p.getHeight()/2,color:rgb(.5,.5,.5),opacity:.3,rotate:degrees(30)});}
     if(o.pageNumbers)p.drawText(`${i+1} / ${doc.getPageCount()}`,{font,size:10,x:p.getWidth()/2-15,y:16,color:rgb(.3,.3,.3)});
@@ -75,7 +76,7 @@ async function raster(file:Blob,o:FitOptions,quality:number,progress:Progress,si
 
 export async function processPdf(file:File,o:FitOptions,progress:Progress,signal:AbortSignal):Promise<ProcessResult>{
   const input=await unlocked(file,o,signal);const info=await inspectPdf(new File([input],file.name));if((info.pages||0)>200)throw new Error('PDF limit: 200 pages.');
-  const changes=o.pages||o.rotate||o.watermark||o.pageNumbers||o.paper!=='original'||(o.width&&o.height)||o.stripMetadata;
+  const changes=o.pages||o.rotate||o.watermark||o.pageNumbers||o.paper!=='original'||o.stripMetadata;
   if(!changes&&!o.grayscale&&o.pdfMode==='preserve'&&(!o.maxBytes||input.size<=o.maxBytes)&&!o.outputPassword)return result(input,nameFor(file,o));
   let best=changes?await edited(input,o,signal):input;const warnings:string[]=[];
   if(new TextDecoder('latin1').decode(await input.arrayBuffer()).includes('/ByteRange'))warnings.push('Editing this signed PDF invalidates its digital signatures.');
@@ -93,7 +94,7 @@ export async function processPdf(file:File,o:FitOptions,progress:Progress,signal
 
 export async function imageToPdf(files:File[],o:FitOptions,progress:Progress,signal:AbortSignal):Promise<ProcessResult>{
   if(!files.length)throw new Error('Choose at least one image.');const doc=await PDFDocument.create();
-  for(const [i,file] of files.entries()){abort(signal);const bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;const ctx=canvas.getContext('2d')!;ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0);bitmap.close();const image=await doc.embedJpg(await(await canvasBlob(canvas,'image/jpeg',Math.max(.85,o.minQuality))).arrayBuffer());const factor=72/(o.dpi||96);const w=canvas.width*factor,h=canvas.height*factor;const size=o.paper==='a4'?[595.276,841.89]:o.paper==='letter'?[612,792]:[w,h];const scale=Math.min(size[0]/w,size[1]/h);doc.addPage(size as [number,number]).drawImage(image,{x:(size[0]-w*scale)/2,y:(size[1]-h*scale)/2,width:w*scale,height:h*scale});canvas.width=canvas.height=0;progress((i+1)/files.length*.8,'Adding image');}
+  for(const [i,file] of files.entries()){abort(signal);const bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;const ctx=canvas.getContext('2d')!;ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0);bitmap.close();const image=await doc.embedJpg(await(await canvasBlob(canvas,'image/jpeg',Math.max(.85,o.minQuality))).arrayBuffer());const factor=72/(o.dpi||96);const w=canvas.width*factor,h=canvas.height*factor;const size=paperSize(o)||[w,h];const scale=Math.min(size[0]/w,size[1]/h);doc.addPage(size as [number,number]).drawImage(image,{x:(size[0]-w*scale)/2,y:(size[1]-h*scale)/2,width:w*scale,height:h*scale});canvas.width=canvas.height=0;progress((i+1)/files.length*.8,'Adding image');}
   const blob=pdfBlob(await doc.save());return processPdf(new File([blob],nameFor(files[0],o)),{...o,width:0,height:0,paper:'original'},progress,signal);
 }
 

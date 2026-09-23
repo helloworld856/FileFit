@@ -2,7 +2,7 @@
 
 A browser-local image and PDF workspace that checks upload requirements against actual output bytes, format, dimensions and page count. Originals are preserved. Failed requirements are not reported as successful.
 
-The first release includes batch image fitting and JPEG/PNG/WebP/AVIF conversion, HEIC input, resizing and DPI, image stitching, image-to-PDF, content-preserving and explicitly rasterized PDF compression, PDF page tools, text/image extraction, Chinese/English OCR, encryption, presets, and JSON plus readable HTML reports. See the [verification ledger](docs/verification.md) for exercised paths and limits.
+The first release includes batch image fitting and JPEG/PNG/WebP/AVIF conversion, optional PNG palette compression, HEIC input, resizing and DPI/millimetre conversion, image stitching, image-to-PDF, content-preserving and explicitly rasterized PDF compression, PDF page tools with custom paper sizes, text/image extraction, Chinese/English OCR, encryption, presets, and JSON plus readable HTML reports. See the [verification ledger](docs/verification.md) for exercised paths and limits.
 
 [中文](README.md) · [Third-party notices](THIRD_PARTY_NOTICES.md) · [Verification](docs/verification.md)
 
