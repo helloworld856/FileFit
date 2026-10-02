@@ -33,13 +33,24 @@ docker build -t filefit .
 docker run --rm -p 8080:8080 filefit
 ```
 
-访问 http://localhost:8080。镜像构建需要网络；运行仅提供静态文件。公网部署需另配 HTTPS，并提供所部署版本的源码链接。Docker 构建尚未在此交付环境验证。
+访问 http://localhost:8080。镜像构建需要网络；运行仅提供静态文件。公网部署需另配 HTTPS，并提供所部署版本的源码链接。GitHub Actions 会构建、启动镜像并检查引擎资源和 MIME 类型；实际验证状态见验收记录。
 
 ## 使用及边界
 
 添加文件，设置体积与格式要求，运行处理，再检查报告并下载。KB/MB 使用十进制。PDF 保留内容与图片化压缩是不同模式；图片化会丢失可选择文字、链接和表单。OCR 识别可能错误，需要人工复核。PDF 修改会影响数字签名，保留原件。
 
-现代桌面 Chromium 是主要验证目标；HEIC/AVIF、超大文件、移动设备内存及特殊 PDF 的实际支持以验收记录为准。不能保证任意体积、像素和质量组合均可达到。功能范围以已实现界面和验收结果为准，设计文档不是完成声明。
+单个输入文件最多 100 MB，单张图片及输出画布最多 1600 万像素；拼接和图片转 PDF 的输入总像素最多 4000 万。图片在解码与预览前检查头部尺寸，无法读取尺寸的文件会被拒绝。HEIC 仅支持单张显示图片，多图文件在解码前拒绝。这些限制减少内存峰值，但移动设备仍可能因可用内存不足而失败。
+
+Chromium 已验证完整处理流程，WebKit 已验证基本图片处理、异常文件和键盘操作；Firefox 由 Linux CI 检查。真实 Safari、移动设备和特殊 PDF 的实际支持以验收记录为准。不能保证任意体积、像素和质量组合均可达到。
+
+浏览器回归测试（首次运行需安装测试浏览器）：
+
+```sh
+npx playwright install chromium firefox webkit
+npm run test:browser
+```
+
+设置环境变量 `FILEFIT_CROSS_BROWSER=1` 可运行三个浏览器；默认只运行 Chromium。Windows PowerShell 使用 `$env:FILEFIT_CROSS_BROWSER='1'`。资源下载包含超时、重试和固定提交的备用源；只有 SHA-256 校验成功的文件才会写入缓存。
 
 ## 隐私与离线
 
@@ -47,4 +58,4 @@ docker run --rm -p 8080:8080 filefit
 
 ## 开源
 
-AGPL-3.0-only，详见 LICENSE。复用 BentoPDF 相关 PDF 引擎，保留上游版权。公开部署前将源码入口指向该部署版本的完整对应源码，并检查第三方打包声明。此项目尚未自动创建或发布 GitHub 仓库。
+源码发布于 [helloworld856/FileFit](https://github.com/helloworld856/FileFit)。AGPL-3.0-only，详见 LICENSE。复用 BentoPDF 相关 PDF 引擎，保留上游版权。公开部署前将源码入口指向该部署版本的完整对应源码，并检查第三方打包声明。

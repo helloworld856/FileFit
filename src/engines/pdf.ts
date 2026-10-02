@@ -2,6 +2,9 @@ import {PDFDocument, PDFName, StandardFonts, degrees, rgb} from 'pdf-lib';
 import type {FileInfo, FitOptions, ProcessResult, Progress} from '../core/types';
 import {pageSelection} from './pdf-pages';
 import {runPyMuPDF} from './pymupdf';
+import {checkImageInput,MAX_BATCH_PIXELS} from './image-helpers';
+import {assertInputSize} from '../core/input-limits';
+import {decodeImage} from './image';
 
 const abort = (signal?:AbortSignal)=>{if(signal?.aborted) throw new DOMException('Cancelled','AbortError');};
 const pdfBlob = (bytes:Uint8Array)=>new Blob([new Uint8Array(bytes)],{type:'application/pdf'});
@@ -21,6 +24,7 @@ async function openJs(file:Blob,password='',signal?:AbortSignal) {
 }
 
 export async function inspectPdf(file:File,password=''):Promise<FileInfo> {
+   assertInputSize(file,'pdf');
   try { const doc=await PDFDocument.load(await file.arrayBuffer(),{updateMetadata:false});
     const p=doc.getPage(0);return {format:'pdf',pages:doc.getPageCount(),width:p.getWidth(),height:p.getHeight(),encrypted:false};
   } catch(e) { if(!String(e).includes('encrypted')) throw e; }
@@ -30,7 +34,7 @@ export async function inspectPdf(file:File,password=''):Promise<FileInfo> {
 
 async function unlocked(file:Blob,o:FitOptions,signal:AbortSignal):Promise<Blob> {
   abort(signal);
-  if(!file.size||file.size>100_000_000)throw new Error('PDF is empty or exceeds 100 MB.');
+  assertInputSize(file,'pdf');
   try{const doc=await PDFDocument.load(await file.arrayBuffer(),{updateMetadata:false});if(doc.getPageCount()>200)throw new Error('PDF limit: 200 pages.');return file;}
   catch(e){if(!String(e).includes('encrypted'))throw e;if(!o.password)throw new Error('This PDF requires its current password.');return await runPyMuPDF('decrypt',file,{password:o.password},signal);}
 }
@@ -93,8 +97,21 @@ export async function processPdf(file:File,o:FitOptions,progress:Progress,signal
 }
 
 export async function imageToPdf(files:File[],o:FitOptions,progress:Progress,signal:AbortSignal):Promise<ProcessResult>{
-  if(!files.length)throw new Error('Choose at least one image.');const doc=await PDFDocument.create();
-  for(const [i,file] of files.entries()){abort(signal);const bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});const canvas=document.createElement('canvas');canvas.width=bitmap.width;canvas.height=bitmap.height;const ctx=canvas.getContext('2d')!;ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0);bitmap.close();const image=await doc.embedJpg(await(await canvasBlob(canvas,'image/jpeg',Math.max(.85,o.minQuality))).arrayBuffer());const factor=72/(o.dpi||96);const w=canvas.width*factor,h=canvas.height*factor;const size=paperSize(o)||[w,h];const scale=Math.min(size[0]/w,size[1]/h);doc.addPage(size as [number,number]).drawImage(image,{x:(size[0]-w*scale)/2,y:(size[1]-h*scale)/2,width:w*scale,height:h*scale});canvas.width=canvas.height=0;progress((i+1)/files.length*.8,'Adding image');}
+  if(!files.length||files.length>50)throw new Error('Choose 1 to 50 images.');
+  let totalPixels=0;const checked:Awaited<ReturnType<typeof checkImageInput>>[]=[];
+  for(const file of files){abort(signal);const info=await checkImageInput(file);totalPixels+=info.width*info.height;if(totalPixels>MAX_BATCH_PIXELS)throw new Error('图片转 PDF 总像素超过 4000 万像素安全上限');checked.push(info);}
+  const doc=await PDFDocument.create();
+  for(const [i,file] of files.entries()){
+    abort(signal);const bitmap=await decodeImage(file,signal,checked[i]);const canvas=document.createElement('canvas');
+    try{
+      canvas.width=bitmap.width;canvas.height=bitmap.height;
+      const ctx=canvas.getContext('2d')!;ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0);
+      const image=await doc.embedJpg(await(await canvasBlob(canvas,'image/jpeg',Math.max(.85,o.minQuality))).arrayBuffer());
+      const factor=72/(o.dpi||96),w=canvas.width*factor,h=canvas.height*factor,size=paperSize(o)||[w,h],scale=Math.min(size[0]/w,size[1]/h);
+      doc.addPage(size as [number,number]).drawImage(image,{x:(size[0]-w*scale)/2,y:(size[1]-h*scale)/2,width:w*scale,height:h*scale});
+    }finally{bitmap.close();canvas.width=canvas.height=0;}
+    progress((i+1)/files.length*.8,'Adding image');
+  }
   const blob=pdfBlob(await doc.save());return processPdf(new File([blob],nameFor(files[0],o)),{...o,width:0,height:0,paper:'original'},progress,signal);
 }
 

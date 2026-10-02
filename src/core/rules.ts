@@ -1,4 +1,5 @@
 import type { Check,FileInfo,FitOptions } from './types';
+import {MAX_IMAGE_PIXELS} from './input-limits';
 export function formatSize(bytes:number):string {return bytes>=1e6?`${(bytes/1e6).toFixed(2)} MB`:bytes>=1000?`${(bytes/1000).toFixed(1)} KB`:`${bytes} B`;}
 export function validateResult(blob:Blob,info:FileInfo,options:FitOptions,name:string):Check[]{
  const checks:Check[]=[{label:'size',passed:blob.size<=options.maxBytes,detail:`${formatSize(blob.size)} / ${formatSize(options.maxBytes)}`}];
@@ -13,7 +14,7 @@ export function validateOptions(o:FitOptions):string[]{
  const errors:string[]=[];
  if(!Number.isFinite(o.maxBytes)||o.maxBytes<1)errors.push('请填写大于 0 的文件大小');
  for(const key of ['width','height','dpi','maxPages'] as const)if(!Number.isInteger(o[key])||o[key]<0)errors.push(`${key} 必须为非负整数`);
- if(o.width>20000||o.height>20000||o.width*o.height>40000000)errors.push('图片尺寸超过 4000 万像素或 20000 像素边长');
+ if(o.width>20000||o.height>20000||o.width*o.height>MAX_IMAGE_PIXELS)errors.push('图片尺寸超过 1600 万像素或 20000 像素边长');
  if(!Number.isFinite(o.minQuality)||o.minQuality<0.1||o.minQuality>1)errors.push('清晰度下限应在 10% 到 100% 之间');
  if(o.paper==='custom'&&(!Number.isFinite(o.paperWidthMm)||!Number.isFinite(o.paperHeightMm)||o.paperWidthMm<10||o.paperHeightMm<10||o.paperWidthMm>1200||o.paperHeightMm>1200))errors.push('自定义纸张宽高应为 10–1200 毫米');
  return errors;

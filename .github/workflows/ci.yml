@@ -15,3 +15,29 @@ jobs:
       - run: node scripts/prepare-assets.mjs
       - run: npm test
       - run: npm run build
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npx playwright test
+        env:
+          FILEFIT_CROSS_BROWSER: '1'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-results
+          path: test-results/
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: docker build -t filefit-ci .
+      - run: |
+          docker run -d --name filefit-ci -p 127.0.0.1:18080:8080 filefit-ci
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:18080/ > /dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/smoke-server.mjs http://127.0.0.1:18080 --expect-engine-404
+      - if: always()
+        run: docker rm -f filefit-ci || true

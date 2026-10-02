@@ -1,22 +1,21 @@
 import type { FileInfo,FitOptions,Progress,ProcessResult } from '../core/types';
-import {imageGeometry,isAnimated,readDpi,sniffImage,writeDpi} from './image-helpers';
+import {checkImageInput,imageGeometry,isAnimated,MAX_BATCH_PIXELS,readDpi,sniffImage,writeDpi} from './image-helpers';
 import {encodePalettePng} from './png-palette';
 
 function cancelled(signal?:AbortSignal){if(signal?.aborted)throw new DOMException('任务已取消','AbortError');}
 function canvas(w:number,h:number){imageGeometry(w,h,0,0,'contain');const c=document.createElement('canvas');c.width=w;c.height=h;return c;}
-async function decode(file:Blob,signal?:AbortSignal):Promise<ImageBitmap>{
- cancelled(signal);if(!file.size||file.size>100_000_000)throw new Error('图片为空或超过 100 MB');
- const bytes=new Uint8Array(await file.arrayBuffer()),format=sniffImage(bytes);
- if(format==='unknown')throw new Error('无法识别图片；支持 JPEG、PNG、WebP、AVIF 和 HEIC');
+export async function decodeImage(file:Blob,signal?:AbortSignal,checked?:Awaited<ReturnType<typeof checkImageInput>>):Promise<ImageBitmap>{
+ cancelled(signal);const {format}=checked||await checkImageInput(file);
+ const bytes=new Uint8Array(await file.arrayBuffer());
  if(isAnimated(bytes))throw new Error('检测到动画图片：当前处理会丢失动画，因此未进行转换');
  let input=file;
- if(format==='heic'){const {default:heic2any}=await import('heic2any');const converted=await heic2any({blob:file,toType:'image/png'});if(Array.isArray(converted)&&converted.length!==1)throw new Error('HEIC 包含多张图片，不能静默丢弃页面');input=Array.isArray(converted)?converted[0]:converted;}
+ if(format==='heic'){const {default:heic2any}=await import('heic2any');const converted=await heic2any({blob:file,toType:'image/png',multiple:true});if(Array.isArray(converted)&&converted.length!==1)throw new Error('HEIC 包含多张图片，不能静默丢弃页面');input=Array.isArray(converted)?converted[0]:converted;}
  cancelled(signal);
  let bitmap:ImageBitmap;
  try{bitmap=await createImageBitmap(input,{imageOrientation:'from-image'});}catch{throw new Error('浏览器无法解码此图片，文件可能损坏或编码不受支持');}
  try{cancelled(signal);imageGeometry(bitmap.width,bitmap.height,0,0,'contain');}catch(e){bitmap.close();throw e;}return bitmap;
 }
-export async function inspectImage(file:File):Promise<FileInfo>{if(!file.size||file.size>100_000_000)throw new Error('图片为空或超过 100 MB');const bytes=new Uint8Array(await file.arrayBuffer());const bitmap=await decode(file);const info={format:sniffImage(bytes),width:bitmap.width,height:bitmap.height,dpi:readDpi(bytes)};bitmap.close();return info;}
+export async function inspectImage(file:File):Promise<FileInfo>{const checked=await checkImageInput(file);const bitmap=await decodeImage(file,undefined,checked);try{const bytes=new Uint8Array(await file.arrayBuffer());return {format:checked.format,width:bitmap.width,height:bitmap.height,dpi:readDpi(bytes)};}finally{bitmap.close();}}
 
 async function encode(c:HTMLCanvasElement,format:string,quality:number,dpi:number,signal?:AbortSignal):Promise<Blob>{
  let blob:Blob;
@@ -70,11 +69,11 @@ async function finish(source:HTMLCanvasElement,name:string,format:string,options
  }finally{if(work!==source){work.width=1;work.height=1;}}
 }
 export async function processImage(file:File,options:FitOptions,progress:Progress,signal:AbortSignal):Promise<ProcessResult>{
- cancelled(signal);if(!file.size||file.size>100_000_000)throw new Error('图片为空或超过 100 MB');
+ cancelled(signal);const checked=await checkImageInput(file);
  if(![options.minQuality,options.rotate,options.width,options.height,options.maxBytes,options.dpi].every(Number.isFinite)||options.minQuality<0||options.minQuality>1||options.maxBytes<0)throw new Error('图片处理参数无效');
  progress(2,'正在读取图片');const bytes=new Uint8Array(await file.arrayBuffer());const inputFormat=sniffImage(bytes);
  const format=options.format==='original'?(inputFormat==='heic'?'jpeg':inputFormat):options.format;
- const bitmap=await decode(file,signal);const warnings:string[]=[];
+ const bitmap=await decodeImage(file,signal,checked);const warnings:string[]=[];
  let rotated:HTMLCanvasElement|undefined,out:HTMLCanvasElement|undefined;
  try{
   if(!options.stripMetadata)warnings.push('重新编码可能移除原始 EXIF/GPS 等元数据；如需完整保留，请使用符合要求的原文件。');
@@ -92,9 +91,11 @@ export async function stitchImages(files:File[],options:FitOptions,progress:Prog
  if(!files.length||files.length>50)throw new Error('请选择 1 至 50 张图片');
  const bitmaps:ImageBitmap[]=[];let out:HTMLCanvasElement|undefined;
  try{
-  for(let i=0;i<files.length;i++){cancelled(signal);progress(i/files.length*12,'读取拼接图片');bitmaps.push(await decode(files[i],signal));}
+   let totalPixels=0;const checked:Awaited<ReturnType<typeof checkImageInput>>[]=[];
+   for(const file of files){cancelled(signal);const info=await checkImageInput(file);totalPixels+=info.width*info.height;if(totalPixels>MAX_BATCH_PIXELS)throw new Error('拼接图片总像素超过 4000 万像素安全上限');checked.push(info);}
+   for(let i=0;i<files.length;i++){cancelled(signal);progress(i/files.length*12,'读取拼接图片');bitmaps.push(await decodeImage(files[i],signal,checked[i]));}
   const width=options.width||Math.max(...bitmaps.map(b=>b.width));const heights=bitmaps.map(b=>Math.max(1,Math.round(b.height*width/b.width))),height=heights.reduce((a,b)=>a+b,0);
   out=canvas(width,height);const ctx=out.getContext('2d')!;ctx.fillStyle='white';ctx.fillRect(0,0,width,height);let y=0;bitmaps.forEach((b,i)=>{ctx.drawImage(b,0,y,width,heights[i]);y+=heights[i];});
-  const blob=await encode(out,'png',1,0,signal);return await processImage(new File([blob],'stitched.png',{type:'image/png'}),options,progress,signal);
+   const blob=await encode(out,'png',1,0,signal);bitmaps.splice(0).forEach(b=>b.close());out.width=out.height=1;out=undefined;return await processImage(new File([blob],'stitched.png',{type:'image/png'}),options,progress,signal);
  }finally{bitmaps.forEach(b=>b.close());if(out){out.width=1;out.height=1;}}
 }

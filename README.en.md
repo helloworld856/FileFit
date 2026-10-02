@@ -31,10 +31,21 @@ docker build -t filefit .
 docker run --rm -p 8080:8080 filefit
 ```
 
-The container serves static files at port 8080. Configure HTTPS separately for public hosting. Docker has not yet been verified in this delivery environment.
+The container serves static files at port 8080. Configure HTTPS separately for public hosting. GitHub Actions builds and starts the image, then checks engine resources and MIME types. See the verification ledger for actual results.
 
-FileFit uses decimal KB/MB. Rasterized PDF compression loses selectable text, links and forms; choose that mode explicitly. OCR needs human review. PDF edits affect signatures. Arbitrary size, quality and pixel constraints cannot always be satisfied. Modern desktop Chromium is the primary test target; consult the verification record for actual coverage rather than treating the design specification as a completion claim.
+FileFit uses decimal KB/MB. Rasterized PDF compression loses selectable text, links and forms; choose that mode explicitly. OCR needs human review. PDF edits affect signatures. Arbitrary size, quality and pixel constraints cannot always be satisfied.
+
+Inputs are limited to 100 MB each. Images and output canvases are limited to 16 million pixels; stitching and image-to-PDF inputs have a combined limit of 40 million pixels. Header dimensions are checked before decoding or previewing. Unreadable dimensions are rejected. HEIC supports one display image; multiple-image files are rejected before decoding. These limits reduce memory pressure but cannot guarantee success on every mobile device.
+
+Chromium exercises the full engine flows. WebKit exercises basic image processing, invalid inputs and keyboard interactions; Linux CI also checks Firefox. Actual Safari and mobile devices still need testing.
+
+```sh
+npx playwright install chromium firefox webkit
+npm run test:browser
+```
+
+Set `FILEFIT_CROSS_BROWSER=1` to run all three browsers (PowerShell: `$env:FILEFIT_CROSS_BROWSER='1'`). Chromium is the default. Asset downloads use timeouts, retries and commit-pinned mirrors; only files matching the expected SHA-256 enter the cache.
 
 Files and passwords are not stored in the static-resource cache. Preferences may persist locally; files must be added again after refresh. PWA caching is opportunistic and bounded: a feature must first download its resources, and the browser may evict them. Full first-use offline support is not promised. Clear caches through the app or browser site-data settings.
 
-Licensed under AGPL-3.0-only. Before public deployment, provide a visible link to the complete Corresponding Source for the exact deployed version. Review the bundled dependency notices and source obligations. No GitHub repository is created or published by these local setup steps.
+Source: [helloworld856/FileFit](https://github.com/helloworld856/FileFit). Licensed under AGPL-3.0-only. Before public deployment, provide a visible link to the complete Corresponding Source for the exact deployed version. Review the bundled dependency notices and source obligations.
